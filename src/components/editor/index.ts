@@ -1,0 +1,4 @@
+export { default as PreviewCanvas } from './PreviewCanvas.vue'
+export { default as FieldList } from './FieldList.vue'
+export { default as FieldEditor } from './FieldEditor.vue'
+export { default as SettingsPanel } from './SettingsPanel.vue'
