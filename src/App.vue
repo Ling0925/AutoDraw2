@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, watch, onUnmounted } from 'vue'
 import type { CardConfig, ExcelRecord, Field } from '@/types'
 import { getDefaultConfig, createDefaultTextField, createDefaultImageField } from '@/types'
-import { parseExcel, exportCards, exportConfig, importConfig } from '@/utils'
+import { parseExcel, exportCards, exportConfig, importConfig, getAvailableFonts, DEFAULT_FONTS, 
+         saveConfig, loadConfig, saveRecords, loadRecords, saveCurrentIndex, loadCurrentIndex,
+         saveUploadedImages, loadUploadedImages, autoSave, HistoryManager, deepClone } from '@/utils'
 import { Button, Select } from '@/components/ui'
 import { PreviewCanvas, FieldList, FieldEditor, SettingsPanel } from '@/components/editor'
-import { Upload, Download, FileSpreadsheet, Image as ImageIcon, Loader2 } from 'lucide-vue-next'
+import { Upload, Download, FileSpreadsheet, Image as ImageIcon, Loader2, Save, Undo2, Redo2 } from 'lucide-vue-next'
 
 // 状态
 const config = ref<CardConfig>(getDefaultConfig())
@@ -15,19 +17,160 @@ const selectedFieldIndex = ref<number | undefined>(undefined)
 const uploadedImages = ref<Map<string, string>>(new Map())
 const isExporting = ref(false)
 const exportProgress = ref({ current: 0, total: 0 })
+const lastSaved = ref<Date | null>(null)
 
-// 常用字体列表
-const fonts = ref([
-  'Microsoft YaHei',
-  'SimHei',
-  'SimSun',
-  'KaiTi',
-  'FangSong',
-  'Arial',
-  'Times New Roman',
-  'Georgia',
-  'Verdana'
-])
+// 历史管理
+const historyManager = new HistoryManager<CardConfig>(50)
+let isUndoRedoOperation = false
+const historyState = ref({ canUndo: false, canRedo: false })
+
+// 更新历史状态
+function updateHistoryState() {
+  historyState.value = {
+    canUndo: historyManager.canUndo(),
+    canRedo: historyManager.canRedo()
+  }
+}
+
+// 字体列表（初始使用默认字体，之后加载系统字体）
+const fonts = ref<string[]>(DEFAULT_FONTS)
+const fontsLoading = ref(false)
+const fontsError = ref<string | null>(null)
+
+// 加载系统字体
+async function loadSystemFonts() {
+  fontsLoading.value = true
+  fontsError.value = null
+  try {
+    fonts.value = await getAvailableFonts()
+  } catch (error) {
+    fontsError.value = '加载系统字体失败'
+    console.error('Failed to load system fonts:', error)
+  } finally {
+    fontsLoading.value = false
+  }
+}
+
+// 从本地存储恢复数据
+function restoreFromStorage() {
+  const savedConfig = loadConfig()
+  if (savedConfig) {
+    config.value = savedConfig
+    console.log('已恢复保存的配置')
+  }
+  
+  const savedRecords = loadRecords()
+  if (savedRecords) {
+    records.value = savedRecords
+    console.log('已恢复保存的数据')
+  }
+  
+  const savedIndex = loadCurrentIndex()
+  if (savedIndex !== null && savedIndex < records.value.length) {
+    currentRecordIndex.value = savedIndex
+  }
+  
+  const savedImages = loadUploadedImages()
+  if (savedImages) {
+    uploadedImages.value = savedImages
+    console.log('已恢复上传的图片')
+  }
+}
+
+// 保存到本地存储
+function saveToStorage() {
+  saveConfig(config.value)
+  saveRecords(records.value)
+  saveCurrentIndex(currentRecordIndex.value)
+  saveUploadedImages(uploadedImages.value)
+  lastSaved.value = new Date()
+  console.log('已自动保存')
+}
+
+// 监听数据变化，自动保存
+watch(
+  () => [config.value, records.value, currentRecordIndex.value, uploadedImages.value],
+  () => {
+    autoSave(saveToStorage)
+  },
+  { deep: true }
+)
+
+// 监听配置变化，保存到历史记录
+watch(
+  () => config.value,
+  (newConfig) => {
+    if (!isUndoRedoOperation) {
+      historyManager.push(deepClone(newConfig))
+      updateHistoryState()
+    }
+  },
+  { deep: true }
+)
+
+// 撤销操作
+function handleUndo() {
+  const prevState = historyManager.undo()
+  if (prevState) {
+    isUndoRedoOperation = true
+    config.value = deepClone(prevState)
+    updateHistoryState()
+    // 等待下一个 tick 后重置标志
+    setTimeout(() => {
+      isUndoRedoOperation = false
+    }, 0)
+  }
+}
+
+// 重做操作
+function handleRedo() {
+  const nextState = historyManager.redo()
+  if (nextState) {
+    isUndoRedoOperation = true
+    config.value = deepClone(nextState)
+    updateHistoryState()
+    // 等待下一个 tick 后重置标志
+    setTimeout(() => {
+      isUndoRedoOperation = false
+    }, 0)
+  }
+}
+
+// 计算属性：是否可以撤销/重做
+const canUndo = computed(() => historyState.value.canUndo)
+const canRedo = computed(() => historyState.value.canRedo)
+
+// 键盘快捷键
+function handleKeyDown(event: KeyboardEvent) {
+  // Ctrl+Z / Cmd+Z - 撤销
+  if ((event.ctrlKey || event.metaKey) && event.key === 'z' && !event.shiftKey) {
+    event.preventDefault()
+    handleUndo()
+  }
+  // Ctrl+Y / Cmd+Shift+Z - 重做
+  if ((event.ctrlKey || event.metaKey) && (event.key === 'y' || (event.key === 'z' && event.shiftKey))) {
+    event.preventDefault()
+    handleRedo()
+  }
+}
+
+// 组件挂载时加载系统字体和恢复数据
+onMounted(() => {
+  loadSystemFonts()
+  restoreFromStorage()
+  
+  // 初始化历史记录
+  historyManager.push(deepClone(config.value))
+  updateHistoryState()
+  
+  // 添加键盘事件监听
+  window.addEventListener('keydown', handleKeyDown)
+})
+
+onUnmounted(() => {
+  // 移除键盘事件监听
+  window.removeEventListener('keydown', handleKeyDown)
+})
 
 // 计算属性
 const currentRecord = computed<ExcelRecord>(() => {
@@ -62,7 +205,7 @@ function handleRemoveField(index: number) {
   }
 }
 
-function handleSelectField(index: number) {
+function handleSelectField(index: number | undefined) {
   selectedFieldIndex.value = index
 }
 
@@ -70,6 +213,10 @@ function handleUpdateField(field: Field) {
   if (selectedFieldIndex.value !== undefined) {
     config.value.fields[selectedFieldIndex.value] = field
   }
+}
+
+function handleUpdateFieldByIndex(index: number, field: Field) {
+  config.value.fields[index] = field
 }
 
 async function handleLoadConfig() {
@@ -152,9 +299,35 @@ async function handleExport() {
         <div class="flex items-center gap-4">
           <h1 class="text-xl font-bold">🎨 AutoDraw</h1>
           <span class="text-sm text-muted-foreground">名片批量生成工具</span>
+          <span v-if="lastSaved" class="text-xs text-muted-foreground flex items-center gap-1">
+            <Save class="w-3 h-3" />
+            已保存 {{ new Date(lastSaved).toLocaleTimeString() }}
+          </span>
         </div>
         
         <div class="flex items-center gap-3">
+          <!-- 撤销/重做按钮 -->
+          <div class="flex items-center gap-1 border-r pr-3">
+            <Button 
+              variant="ghost" 
+              size="sm"
+              :disabled="!canUndo" 
+              @click="handleUndo"
+              title="撤销 (Ctrl+Z)"
+            >
+              <Undo2 class="w-4 h-4" />
+            </Button>
+            <Button 
+              variant="ghost" 
+              size="sm"
+              :disabled="!canRedo" 
+              @click="handleRedo"
+              title="重做 (Ctrl+Y)"
+            >
+              <Redo2 class="w-4 h-4" />
+            </Button>
+          </div>
+          
           <Button variant="outline" @click="handleLoadConfig">
             <Upload class="w-4 h-4 mr-2" />
             加载配置
@@ -217,6 +390,8 @@ async function handleExport() {
           :record-index="currentRecordIndex + 1"
           :selected-field-index="selectedFieldIndex"
           :uploaded-images="uploadedImages"
+          @select-field="handleSelectField"
+          @update-field="handleUpdateFieldByIndex"
         />
       </section>
 

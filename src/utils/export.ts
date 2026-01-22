@@ -23,8 +23,8 @@ export async function exportCards(
     // 渲染名片
     await renderCard(canvas, config, record, index, uploadedImages)
     
-    // 生成文件名
-    const filename = formatTemplate(config.output.filename, record, index)
+    // 生成文件名（如果返回 null，使用默认文件名）
+    const filename = formatTemplate(config.output.filename, record, index) ?? `card_${index}`
     const extension = config.output.format.toLowerCase()
     
     // 导出为 Blob

@@ -1,8 +1,14 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import type { Field, TextField, ImageField, Anchor } from '@/types'
 import { ANCHOR_OPTIONS } from '@/types'
 import { Input, Select, Textarea, Label } from '@/components/ui'
+
+// 内置图片列表
+const BUILTIN_IMAGES = [
+  { name: 'Logo', path: '/src/assets/logo.png', preview: '/src/assets/logo.png' },
+  { name: '二维码', path: '/src/assets/Qrcode.jpg', preview: '/src/assets/Qrcode.jpg' }
+]
 
 interface Props {
   field: Field
@@ -10,6 +16,16 @@ interface Props {
 }
 
 const props = defineProps<Props>()
+
+// 字体搜索
+const fontSearch = ref('')
+const filteredFonts = computed(() => {
+  if (!fontSearch.value) {
+    return props.fonts
+  }
+  const search = fontSearch.value.toLowerCase()
+  return props.fonts.filter(font => font.toLowerCase().includes(search))
+})
 const emit = defineEmits<{
   update: [field: Field]
 }>()
@@ -115,6 +131,7 @@ function updateImageField(updates: Partial<ImageField>) {
         <div class="flex items-center gap-2 text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
           <span>🔤</span>
           <span>字体</span>
+          <span class="text-xs font-normal">(共 {{ fonts.length }} 个)</span>
           <div class="flex-1 h-px bg-border" />
         </div>
         
@@ -122,14 +139,55 @@ function updateImageField(updates: Partial<ImageField>) {
           <div class="grid grid-cols-2 gap-2">
             <div class="col-span-2">
               <Label>字体</Label>
-              <Select
-                :model-value="textField.fontFamily"
-                @update:model-value="updateTextField({ fontFamily: $event })"
-              >
-                <option v-for="font in fonts" :key="font" :value="font">
+              <!-- 字体搜索框 -->
+              <Input
+                v-model="fontSearch"
+                type="text"
+                placeholder="搜索字体..."
+                class="mb-2"
+              />
+              <!-- 字体选择列表 -->
+              <div class="border rounded-md max-h-48 overflow-y-auto bg-background">
+                <!-- 当前选中的字体（如果不在搜索结果中） -->
+                <button
+                  v-if="fontSearch && !filteredFonts.includes(textField.fontFamily)"
+                  type="button"
+                  class="w-full px-3 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground flex items-center justify-between bg-accent/50"
+                  @click="updateTextField({ fontFamily: textField.fontFamily })"
+                >
+                  <span :style="{ fontFamily: textField.fontFamily }">{{ textField.fontFamily }}</span>
+                  <span class="text-xs text-muted-foreground">(当前)</span>
+                </button>
+                
+                <!-- 字体列表 -->
+                <button
+                  v-for="font in filteredFonts.slice(0, 100)"
+                  :key="font"
+                  type="button"
+                  class="w-full px-3 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground transition-colors"
+                  :class="{
+                    'bg-accent text-accent-foreground': font === textField.fontFamily
+                  }"
+                  :style="{ fontFamily: font }"
+                  @click="updateTextField({ fontFamily: font })"
+                >
                   {{ font }}
-                </option>
-              </Select>
+                </button>
+                
+                <!-- 无结果提示 -->
+                <div v-if="filteredFonts.length === 0" class="px-3 py-4 text-sm text-center text-muted-foreground">
+                  未找到匹配的字体
+                </div>
+                
+                <!-- 结果过多提示 -->
+                <div v-if="filteredFonts.length > 100" class="px-3 py-2 text-xs text-center text-muted-foreground border-t bg-muted/50">
+                  显示前 100 个结果，共 {{ filteredFonts.length }} 个
+                </div>
+              </div>
+              
+              <p v-if="fontSearch && filteredFonts.length > 0" class="text-xs text-muted-foreground mt-1">
+                找到 {{ filteredFonts.length }} 个匹配字体
+              </p>
             </div>
           </div>
           
@@ -239,13 +297,42 @@ function updateImageField(updates: Partial<ImageField>) {
           <div class="flex-1 h-px bg-border" />
         </div>
         
-        <div>
-          <Label>图片路径</Label>
-          <Input
-            :model-value="imageField.path"
-            placeholder="路径或 {字段名}"
-            @update:model-value="updateImageField({ path: $event })"
-          />
+        <div class="space-y-3">
+          <div>
+            <Label>图片路径</Label>
+            <Input
+              :model-value="imageField.path"
+              placeholder="路径或 {字段名}"
+              @update:model-value="updateImageField({ path: $event })"
+            />
+          </div>
+          
+          <!-- 内置图片选择 -->
+          <div>
+            <Label>选择内置图片</Label>
+            <div class="grid grid-cols-3 gap-2 mt-2">
+              <button
+                v-for="img in BUILTIN_IMAGES"
+                :key="img.path"
+                class="relative aspect-square border-2 rounded-lg overflow-hidden hover:border-primary transition-colors"
+                :class="imageField.path === img.path ? 'border-primary ring-2 ring-primary/20' : 'border-border'"
+                @click="updateImageField({ path: img.path })"
+                :title="img.name"
+              >
+                <img 
+                  :src="img.preview" 
+                  :alt="img.name"
+                  class="w-full h-full object-contain bg-muted/50 p-1"
+                >
+                <span class="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-xs py-0.5 text-center truncate">
+                  {{ img.name }}
+                </span>
+              </button>
+            </div>
+            <p class="text-xs text-muted-foreground mt-2">
+              点击选择内置图片，或在上方输入自定义路径
+            </p>
+          </div>
         </div>
       </div>
 
