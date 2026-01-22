@@ -1,7 +1,10 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import type { Field } from '@/types'
 import { Button } from '@/components/ui'
 import { Type, Image, GripVertical, Trash2 } from 'lucide-vue-next'
+
+const { t } = useI18n()
 
 interface Props {
   fields: Field[]
@@ -21,15 +24,15 @@ function getFieldLabel(field: Field, index: number): string {
     const text = field.text.substring(0, 20)
     return text.length < field.text.length ? text + '...' : text
   }
-  return `图片 ${index + 1}`
+  return t('fields.fieldName', { index: index + 1 })
 }
 </script>
 
 <template>
-  <div class="w-64 bg-background border-r flex flex-col h-full">
+  <div class="flex flex-col h-full bg-transparent">
     <!-- 标题和添加按钮 -->
-    <div class="p-4 border-b">
-      <h2 class="font-semibold text-sm mb-3">字段列表</h2>
+    <div class="p-4 border-b border-border/50 bg-muted/30">
+      <h2 class="font-semibold text-sm mb-3">{{ t('fields.title') }}</h2>
       <div class="flex gap-2">
         <Button
           variant="outline"
@@ -38,7 +41,7 @@ function getFieldLabel(field: Field, index: number): string {
           @click="emit('add', 'text')"
         >
           <Type class="w-3 h-3 mr-1" />
-          文字
+          {{ t('fields.addText') }}
         </Button>
         <Button
           variant="outline"
@@ -47,7 +50,7 @@ function getFieldLabel(field: Field, index: number): string {
           @click="emit('add', 'image')"
         >
           <Image class="w-3 h-3 mr-1" />
-          图片
+          {{ t('fields.addImage') }}
         </Button>
       </div>
     </div>
@@ -70,7 +73,9 @@ function getFieldLabel(field: Field, index: number): string {
         <div
           :class="[
             'w-6 h-6 rounded flex items-center justify-center text-xs',
-            field.type === 'text' ? 'bg-blue-100 text-blue-600' : 'bg-green-100 text-green-600'
+            field.type === 'text' 
+              ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/50 dark:text-blue-300' 
+              : 'bg-green-100 text-green-600 dark:bg-green-900/50 dark:text-green-300'
           ]"
         >
           <Type v-if="field.type === 'text'" class="w-3 h-3" />
@@ -93,7 +98,7 @@ function getFieldLabel(field: Field, index: number): string {
         v-if="fields.length === 0"
         class="text-center py-8 text-muted-foreground text-sm"
       >
-        点击上方按钮添加字段
+        {{ t('fields.noFields') }}
       </div>
     </div>
   </div>

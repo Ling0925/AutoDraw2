@@ -1,13 +1,17 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch, nextTick, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import type { Field, TextField, ImageField, Anchor } from '@/types'
-import { ANCHOR_OPTIONS } from '@/types'
 import { Input, Select, Textarea, Label } from '@/components/ui'
+import { useAnchorOptions } from '@/composables/useAnchorOptions'
+
+const { t } = useI18n()
+const { ANCHOR_OPTIONS } = useAnchorOptions()
 
 // 内置图片列表
 const BUILTIN_IMAGES = [
   { name: 'Logo', path: '/src/assets/logo.png', preview: '/src/assets/logo.png' },
-  { name: '二维码', path: '/src/assets/Qrcode.jpg', preview: '/src/assets/Qrcode.jpg' }
+  { name: 'QR Code', path: '/src/assets/Qrcode.jpg', preview: '/src/assets/Qrcode.jpg' }
 ]
 
 interface Props {
@@ -19,13 +23,64 @@ const props = defineProps<Props>()
 
 // 字体搜索
 const fontSearch = ref('')
+const fontListRef = ref<HTMLDivElement | null>(null)
+
+// 字体列表：如果当前字体不在列表中，则将其添加到顶部
+const displayFonts = computed(() => {
+  const currentFont = (isText.value && textField.value?.fontFamily) ? textField.value.fontFamily : ''
+  const allFonts = [...props.fonts]
+  
+  // 如果当前字体不在列表中，添加到顶部
+  if (currentFont && typeof currentFont === 'string' && currentFont.trim() && !allFonts.includes(currentFont)) {
+    allFonts.unshift(currentFont)
+  }
+  
+  return allFonts
+})
+
 const filteredFonts = computed(() => {
   if (!fontSearch.value) {
-    return props.fonts
+    return displayFonts.value
   }
   const search = fontSearch.value.toLowerCase()
-  return props.fonts.filter(font => font.toLowerCase().includes(search))
+  return displayFonts.value.filter(font => font.toLowerCase().includes(search))
 })
+
+// 滚动到当前字体的函数
+function scrollToCurrentFont() {
+  if (!isText.value || !textField.value?.fontFamily) return
+  
+  const currentFont = textField.value.fontFamily
+  if (!currentFont || typeof currentFont !== 'string') return
+  
+  // 使用 setTimeout 确保在 Transition 动画完成后执行
+  setTimeout(() => {
+    if (!fontListRef.value) return
+    
+    const fontButton = fontListRef.value.querySelector(`[data-font="${CSS.escape(currentFont)}"]`)
+    if (fontButton) {
+      fontButton.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }
+  }, 100)
+}
+
+// 监听字段变化，自动滚动到当前字体
+watch(
+  () => props.field,
+  async () => {
+    // 重置搜索框
+    fontSearch.value = ''
+    
+    await nextTick()
+    scrollToCurrentFont()
+  }
+)
+
+// 组件挂载时也执行一次滚动
+onMounted(() => {
+  scrollToCurrentFont()
+})
+
 const emit = defineEmits<{
   update: [field: Field]
 }>()
@@ -66,25 +121,26 @@ function updateImageField(updates: Partial<ImageField>) {
     <div>
       <div class="flex items-center gap-2 text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
         <span>📋</span>
-        <span>基本</span>
+        <span>{{ t('editor.basicSettings') }}</span>
         <div class="flex-1 h-px bg-border" />
       </div>
       
       <div class="space-y-3">
         <div>
-          <Label>类型</Label>
+          <Label>{{ t('editor.type') }}</Label>
           <Select
             :model-value="field.type"
+            :options="[
+              { label: t('editor.typeText'), value: 'text' },
+              { label: t('editor.typeImage'), value: 'image' }
+            ]"
             @update:model-value="updateField({ type: $event as 'text' | 'image' })"
-          >
-            <option value="text">文字</option>
-            <option value="image">图片</option>
-          </Select>
+          />
         </div>
         
         <div class="grid grid-cols-2 gap-2">
           <div>
-            <Label>X 坐标 (px)</Label>
+            <Label>{{ t('editor.x') }}</Label>
             <Input
               type="number"
               :model-value="String(field.position.x)"
@@ -92,7 +148,7 @@ function updateImageField(updates: Partial<ImageField>) {
             />
           </div>
           <div>
-            <Label>Y 坐标 (px)</Label>
+            <Label>{{ t('editor.y') }}</Label>
             <Input
               type="number"
               :model-value="String(field.position.y)"
@@ -109,19 +165,19 @@ function updateImageField(updates: Partial<ImageField>) {
       <div>
         <div class="flex items-center gap-2 text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
           <span>✏️</span>
-          <span>内容</span>
+          <span>{{ t('editor.content') }}</span>
           <div class="flex-1 h-px bg-border" />
         </div>
         
         <div>
           <Textarea
             :model-value="textField.text"
-            placeholder="输入文字内容..."
+            :placeholder="t('editor.placeholderHint')"
             :rows="2"
             @update:model-value="updateTextField({ text: $event })"
           />
           <p class="text-xs text-muted-foreground mt-1">
-            使用 <code class="bg-muted px-1 rounded">{字段名}</code> 插入 Excel 数据
+            {{ t('editor.placeholderHint') }}
           </p>
         </div>
       </div>
@@ -130,53 +186,47 @@ function updateImageField(updates: Partial<ImageField>) {
       <div>
         <div class="flex items-center gap-2 text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
           <span>🔤</span>
-          <span>字体</span>
-          <span class="text-xs font-normal">(共 {{ fonts.length }} 个)</span>
+          <span>{{ t('editor.font') }}</span>
+          <span class="text-xs font-normal">({{ fonts.length }})</span>
           <div class="flex-1 h-px bg-border" />
         </div>
         
         <div class="space-y-3">
           <div class="grid grid-cols-2 gap-2">
             <div class="col-span-2">
-              <Label>字体</Label>
+              <Label>{{ t('editor.font') }}</Label>
               <!-- 字体搜索框 -->
               <Input
                 v-model="fontSearch"
                 type="text"
-                placeholder="搜索字体..."
+                :placeholder="t('editor.searchFont')"
                 class="mb-2"
               />
               <!-- 字体选择列表 -->
-              <div class="border rounded-md max-h-48 overflow-y-auto bg-background">
-                <!-- 当前选中的字体（如果不在搜索结果中） -->
-                <button
-                  v-if="fontSearch && !filteredFonts.includes(textField.fontFamily)"
-                  type="button"
-                  class="w-full px-3 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground flex items-center justify-between bg-accent/50"
-                  @click="updateTextField({ fontFamily: textField.fontFamily })"
-                >
-                  <span :style="{ fontFamily: textField.fontFamily }">{{ textField.fontFamily }}</span>
-                  <span class="text-xs text-muted-foreground">(当前)</span>
-                </button>
-                
+              <div ref="fontListRef" class="border rounded-md max-h-48 overflow-y-auto bg-background">
                 <!-- 字体列表 -->
                 <button
                   v-for="font in filteredFonts.slice(0, 100)"
                   :key="font"
+                  :data-font="font"
                   type="button"
                   class="w-full px-3 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground transition-colors"
                   :class="{
-                    'bg-accent text-accent-foreground': font === textField.fontFamily
+                    'bg-accent text-accent-foreground': font === textField.fontFamily,
+                    'border-b border-primary/20': font === textField.fontFamily && !props.fonts.includes(font)
                   }"
                   :style="{ fontFamily: font }"
                   @click="updateTextField({ fontFamily: font })"
                 >
-                  {{ font }}
+                  <div class="flex items-center justify-between">
+                    <span>{{ font }}</span>
+                    <span v-if="!props.fonts.includes(font)" class="text-xs text-primary bg-primary/10 px-1.5 py-0.5 rounded">自定义</span>
+                  </div>
                 </button>
                 
                 <!-- 无结果提示 -->
                 <div v-if="filteredFonts.length === 0" class="px-3 py-4 text-sm text-center text-muted-foreground">
-                  未找到匹配的字体
+                  {{ t('editor.noFontsFound') }}
                 </div>
                 
                 <!-- 结果过多提示 -->
@@ -189,11 +239,19 @@ function updateImageField(updates: Partial<ImageField>) {
                 找到 {{ filteredFonts.length }} 个匹配字体
               </p>
             </div>
+             <div class="col-span-2">
+              <Label>{{ t('editor.anchor') }}</Label>
+              <Select
+                :model-value="textField.anchor"
+                :options="ANCHOR_OPTIONS"
+                @update:model-value="updateTextField({ anchor: $event as Anchor })"
+              />
+            </div>
           </div>
           
-          <div class="grid grid-cols-3 gap-2">
+          <div class="grid grid-cols-2 gap-2">
             <div>
-              <Label>字号</Label>
+              <Label>{{ t('editor.fontSize') }}</Label>
               <Input
                 type="number"
                 :model-value="String(textField.fontSize)"
@@ -201,27 +259,14 @@ function updateImageField(updates: Partial<ImageField>) {
               />
             </div>
             <div>
-              <Label>字重</Label>
+              <Label>{{ t('editor.bold') }}</Label>
               <Select
-                :model-value="String(textField.fontWeight)"
-                @update:model-value="updateTextField({ fontWeight: parseInt($event) })"
-              >
-                <option v-for="w in [100, 200, 300, 400, 500, 600, 700, 800, 900]" :key="w" :value="String(w)">
-                  {{ w }}
-                </option>
-              </Select>
+                :model-value="textField.fontWeight"
+                :options="[100, 200, 300, 400, 500, 600, 700, 800, 900].map(w => ({ label: String(w), value: w }))"
+                @update:model-value="updateTextField({ fontWeight: Number($event) })"
+              />
             </div>
-            <div>
-              <Label>对齐</Label>
-              <Select
-                :model-value="textField.anchor"
-                @update:model-value="updateTextField({ anchor: $event as Anchor })"
-              >
-                <option v-for="opt in ANCHOR_OPTIONS" :key="opt.value" :value="opt.value">
-                  {{ opt.label }}
-                </option>
-              </Select>
-            </div>
+           
           </div>
         </div>
       </div>
@@ -230,7 +275,7 @@ function updateImageField(updates: Partial<ImageField>) {
       <div>
         <div class="flex items-center gap-2 text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
           <span>🎨</span>
-          <span>颜色</span>
+          <span>{{ t('editor.color') }}</span>
           <div class="flex-1 h-px bg-border" />
         </div>
         
@@ -252,21 +297,21 @@ function updateImageField(updates: Partial<ImageField>) {
       <!-- 高级选项 -->
       <details class="border rounded-lg bg-muted/30">
         <summary class="p-3 cursor-pointer font-medium text-sm text-muted-foreground hover:text-foreground">
-          ⚙️ 高级选项
+          ⚙️ {{ t('settings.title') }}
         </summary>
         <div class="p-3 pt-0 space-y-3 border-t bg-background rounded-b-lg">
           <div>
-            <Label>自动换行宽度 (px)</Label>
+            <Label>{{ t('editor.maxWidth') }}</Label>
             <Input
               type="number"
               :model-value="String(textField.wrapWidth || '')"
-              placeholder="留空则不换行"
+              :placeholder="t('editor.maxWidth')"
               @update:model-value="updateTextField({ wrapWidth: $event ? parseInt($event) : undefined })"
             />
           </div>
           <div class="grid grid-cols-2 gap-2">
             <div>
-              <Label>行间距</Label>
+              <Label>{{ t('editor.lineHeight') }}</Label>
               <Input
                 type="number"
                 :model-value="String(textField.lineSpacing || '')"
@@ -275,7 +320,7 @@ function updateImageField(updates: Partial<ImageField>) {
               />
             </div>
             <div>
-              <Label>字间距</Label>
+              <Label>{{ t('editor.letterSpacing') || 'Letter Spacing' }}</Label>
               <Input
                 type="number"
                 :model-value="String(textField.letterSpacing || '')"
@@ -293,23 +338,23 @@ function updateImageField(updates: Partial<ImageField>) {
       <div>
         <div class="flex items-center gap-2 text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
           <span>🖼️</span>
-          <span>图片</span>
+          <span>{{ t('editor.imageSettings') }}</span>
           <div class="flex-1 h-px bg-border" />
         </div>
         
         <div class="space-y-3">
           <div>
-            <Label>图片路径</Label>
+            <Label>{{ t('editor.imageUrl') }}</Label>
             <Input
               :model-value="imageField.path"
-              placeholder="路径或 {字段名}"
+              :placeholder="t('editor.imageUrlHint')"
               @update:model-value="updateImageField({ path: $event })"
             />
           </div>
           
           <!-- 内置图片选择 -->
           <div>
-            <Label>选择内置图片</Label>
+            <Label>{{ t('editor.builtinImages') }}</Label>
             <div class="grid grid-cols-3 gap-2 mt-2">
               <button
                 v-for="img in BUILTIN_IMAGES"
@@ -339,26 +384,26 @@ function updateImageField(updates: Partial<ImageField>) {
       <div>
         <div class="flex items-center gap-2 text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
           <span>📐</span>
-          <span>尺寸限制</span>
+          <span>{{ t('settings.title') }}</span>
           <div class="flex-1 h-px bg-border" />
         </div>
         
         <div class="grid grid-cols-2 gap-2">
           <div>
-            <Label>最大宽度 (px)</Label>
+            <Label>{{ t('editor.imageWidth') }}</Label>
             <Input
               type="number"
               :model-value="String(imageField.maxWidth || '')"
-              placeholder="不限制"
+              :placeholder="t('editor.maxWidth')"
               @update:model-value="updateImageField({ maxWidth: $event ? parseInt($event) : undefined })"
             />
           </div>
           <div>
-            <Label>最大高度 (px)</Label>
+            <Label>{{ t('editor.imageHeight') }}</Label>
             <Input
               type="number"
               :model-value="String(imageField.maxHeight || '')"
-              placeholder="不限制"
+              :placeholder="t('editor.maxWidth')"
               @update:model-value="updateImageField({ maxHeight: $event ? parseInt($event) : undefined })"
             />
           </div>

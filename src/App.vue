@@ -1,13 +1,19 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch, onUnmounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import type { CardConfig, ExcelRecord, Field } from '@/types'
 import { getDefaultConfig, createDefaultTextField, createDefaultImageField } from '@/types'
 import { parseExcel, exportCards, exportConfig, importConfig, getAvailableFonts, DEFAULT_FONTS, 
          saveConfig, loadConfig, saveRecords, loadRecords, saveCurrentIndex, loadCurrentIndex,
-         saveUploadedImages, loadUploadedImages, autoSave, HistoryManager, deepClone } from '@/utils'
-import { Button, Select } from '@/components/ui'
-import { PreviewCanvas, FieldList, FieldEditor, SettingsPanel } from '@/components/editor'
-import { Upload, Download, FileSpreadsheet, Image as ImageIcon, Loader2, Save, Undo2, Redo2 } from 'lucide-vue-next'
+         saveUploadedImages, loadUploadedImages, autoSave, HistoryManager, deepClone,
+         loadBuiltinFonts } from '@/utils'
+import { Button, Select, ThemeToggle } from '@/components/ui'
+import { PreviewCanvas, FieldList, FieldEditor, CanvasSettingsDialog, ExportDialog } from '@/components/editor'
+import { Upload, Download, FileSpreadsheet, Image as ImageIcon, Save, Undo2, Redo2, Type, Settings2 } from 'lucide-vue-next'
+import { availableLocales, setLocale } from '@/locales'
+
+// i18n
+const { t, locale } = useI18n()
 
 // 状态
 const config = ref<CardConfig>(getDefaultConfig())
@@ -18,6 +24,8 @@ const uploadedImages = ref<Map<string, string>>(new Map())
 const isExporting = ref(false)
 const exportProgress = ref({ current: 0, total: 0 })
 const lastSaved = ref<Date | null>(null)
+const canvasSettingsOpen = ref(false)
+const exportDialogOpen = ref(false)
 
 // 历史管理
 const historyManager = new HistoryManager<CardConfig>(50)
@@ -156,6 +164,9 @@ function handleKeyDown(event: KeyboardEvent) {
 
 // 组件挂载时加载系统字体和恢复数据
 onMounted(() => {
+  // 加载内置字体
+  loadBuiltinFonts()
+  
   loadSystemFonts()
   restoreFromStorage()
   
@@ -264,12 +275,15 @@ async function handleExcelFileChange(event: Event) {
   input.value = ''
 }
 
-async function handleExport() {
+function handleOpenExportDialog() {
   if (records.value.length === 0) {
     alert('请先加载 Excel 数据')
     return
   }
-  
+  exportDialogOpen.value = true
+}
+
+async function handleExport() {
   isExporting.value = true
   exportProgress.value = { current: 0, total: records.value.length }
   
@@ -282,6 +296,7 @@ async function handleExport() {
         exportProgress.value = { current, total }
       }
     )
+    exportDialogOpen.value = false
   } catch (error) {
     console.error('Export failed:', error)
     alert('导出失败')
@@ -292,137 +307,167 @@ async function handleExport() {
 </script>
 
 <template>
-  <div class="h-screen flex flex-col bg-background">
+  <div class="h-screen flex flex-col bg-app-pattern font-sans relative overflow-hidden text-foreground">
     <!-- 顶部工具栏 -->
-    <header class="bg-background border-b px-6 py-3">
+    <header class="bg-background/80 backdrop-blur-md border-b px-6 py-3 shadow-sm z-50 sticky top-0">
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-4">
-          <h1 class="text-xl font-bold">🎨 AutoDraw</h1>
-          <span class="text-sm text-muted-foreground">名片批量生成工具</span>
-          <span v-if="lastSaved" class="text-xs text-muted-foreground flex items-center gap-1">
+          <div class="p-2 bg-primary/10 rounded-lg">
+            <h1 class="text-xl font-bold text-primary">🎨 {{ t('app.title') }}</h1>
+          </div>
+          <span v-if="lastSaved" class="text-xs text-muted-foreground flex items-center gap-1 bg-muted/50 px-2 py-1 rounded-full">
             <Save class="w-3 h-3" />
-            已保存 {{ new Date(lastSaved).toLocaleTimeString() }}
+            {{ t('app.autoSaved') }}
           </span>
         </div>
         
         <div class="flex items-center gap-3">
+          <ThemeToggle />
+          
+          <!-- 语言切换 -->
+          <Select
+            :model-value="locale"
+            :options="availableLocales.map(l => ({ label: l.name, value: l.code }))"
+            @update:model-value="setLocale($event as string)"
+            class="w-32 bg-background"
+          />
+          
           <!-- 撤销/重做按钮 -->
-          <div class="flex items-center gap-1 border-r pr-3">
+          <div class="flex items-center gap-1 bg-muted/50 p-1 rounded-md text-muted-foreground">
             <Button 
               variant="ghost" 
               size="sm"
+              class="h-7 w-7 p-0"
               :disabled="!canUndo" 
               @click="handleUndo"
-              title="撤销 (Ctrl+Z)"
+              :title="t('header.undo') + ' (Ctrl+Z)'"
             >
               <Undo2 class="w-4 h-4" />
             </Button>
+            <div class="w-px h-4 bg-border mx-1"></div>
             <Button 
               variant="ghost" 
               size="sm"
+              class="h-7 w-7 p-0"
               :disabled="!canRedo" 
               @click="handleRedo"
-              title="重做 (Ctrl+Y)"
+              :title="t('header.redo') + ' (Ctrl+Y)'"
             >
               <Redo2 class="w-4 h-4" />
             </Button>
           </div>
           
-          <Button variant="outline" @click="handleLoadConfig">
-            <Upload class="w-4 h-4 mr-2" />
-            加载配置
-          </Button>
-          <Button variant="outline" @click="handleSaveConfig">
-            <Download class="w-4 h-4 mr-2" />
-            保存配置
-          </Button>
-          <Button variant="outline" @click="handleLoadExcel">
-            <FileSpreadsheet class="w-4 h-4 mr-2" />
-            加载 Excel
-          </Button>
-          <Button :disabled="isExporting" @click="handleExport">
-            <Loader2 v-if="isExporting" class="w-4 h-4 mr-2 animate-spin" />
-            <ImageIcon v-else class="w-4 h-4 mr-2" />
-            {{ isExporting ? `导出中 ${exportProgress.current}/${exportProgress.total}` : '批量生成' }}
-          </Button>
+          <div class="h-6 w-px bg-border mx-2"></div>
+
+          <div class="flex items-center gap-2">
+            <Button variant="outline" size="sm" @click="handleLoadConfig">
+              <Upload class="w-4 h-4 mr-2" />
+              {{ t('header.importConfig') }}
+            </Button>
+            <Button variant="outline" size="sm" @click="handleSaveConfig">
+              <Download class="w-4 h-4 mr-2" />
+              {{ t('header.exportConfig') }}
+            </Button>
+            <Button variant="outline" size="sm" @click="handleLoadExcel">
+              <FileSpreadsheet class="w-4 h-4 mr-2" />
+              {{ t('header.uploadExcel') }}
+            </Button>
+            <Button variant="outline" size="sm" @click="canvasSettingsOpen = true">
+              <Settings2 class="w-4 h-4 mr-2" />
+              {{ t('settings.cardSettings') }}
+            </Button>
+            <Button size="sm" @click="handleOpenExportDialog">
+              <ImageIcon class="w-4 h-4 mr-2" />
+              {{ t('header.exportCards') }}
+            </Button>
+          </div>
         </div>
       </div>
     </header>
 
     <!-- 主内容区 -->
-    <main class="flex flex-1 overflow-hidden">
+    <main class="flex flex-1 overflow-hidden p-4 relative z-0">
       <!-- 左侧 - 字段列表 -->
-      <FieldList
-        :fields="config.fields"
-        :selected-index="selectedFieldIndex"
-        @select="handleSelectField"
-        @add="handleAddField"
-        @remove="handleRemoveField"
-      />
+      <aside class="w-72 flex flex-col bg-background/85 backdrop-blur-xl rounded-xl shadow-lg border overflow-hidden transition-all duration-300 hover:shadow-xl hover:border-primary/20 mr-4">
+        <FieldList
+          :fields="config.fields"
+          :selected-index="selectedFieldIndex"
+          @select="handleSelectField"
+          @add="handleAddField"
+          @remove="handleRemoveField"
+        />
+      </aside>
 
       <!-- 中间 - 预览区 -->
-      <section class="flex-1 flex flex-col bg-muted/30">
+      <section class="flex-1 flex flex-col bg-background/85 backdrop-blur-xl rounded-xl shadow-lg border overflow-hidden relative group transition-[margin-right] duration-500 ease-spring">
         <!-- 数据选择 -->
-        <div class="p-4 border-b bg-background flex items-center justify-between">
+        <div class="p-4 border-b bg-transparent flex items-center justify-between z-10">
           <div class="flex items-center gap-4">
-            <span class="text-sm text-muted-foreground">预览数据：</span>
+            <span class="text-sm font-medium text-muted-foreground">{{ t('preview.title') }}</span>
             <Select
               :model-value="String(currentRecordIndex)"
               class="w-64"
               :disabled="records.length === 0"
-              @update:model-value="currentRecordIndex = parseInt($event)"
-            >
-              <option v-if="records.length === 0" value="0">请先加载 Excel</option>
-              <option v-for="(record, i) in records" :key="i" :value="String(i)">
-                第 {{ i + 1 }} 条 - {{ Object.values(record).slice(0, 2).join(' / ') }}
-              </option>
-            </Select>
+              :options="records.length === 0 
+                ? [{ label: t('preview.noData'), value: '0' }]
+                : records.map((record, i) => ({
+                    label: `${t('preview.record', { current: i + 1, total: records.length })} - ${Object.values(record).slice(0, 2).join(' / ')}`,
+                    value: String(i)
+                  }))
+              "
+              @update:model-value="currentRecordIndex = parseInt(String($event))"
+            />
           </div>
-          <span class="text-sm text-muted-foreground">
-            {{ config.canvas.width }} × {{ config.canvas.height }}
+          <span class="text-xs font-mono bg-muted px-2 py-1 rounded text-muted-foreground">
+            {{ config.canvas.width }} × {{ config.canvas.height }} px
           </span>
         </div>
 
         <!-- Canvas 预览 -->
-        <PreviewCanvas
-          :config="config"
-          :record="currentRecord"
-          :record-index="currentRecordIndex + 1"
-          :selected-field-index="selectedFieldIndex"
-          :uploaded-images="uploadedImages"
-          @select-field="handleSelectField"
-          @update-field="handleUpdateFieldByIndex"
-        />
+        <div class="flex-1 bg-accent/5 relative overflow-hidden">
+          <PreviewCanvas
+            :config="config"
+            :record="currentRecord"
+            :record-index="currentRecordIndex + 1"
+            :selected-field-index="selectedFieldIndex"
+            :uploaded-images="uploadedImages"
+            @select-field="handleSelectField"
+            @update-field="handleUpdateFieldByIndex"
+          />
+        </div>
       </section>
 
-      <!-- 右侧 - 属性面板 -->
-      <aside class="w-80 bg-background border-l flex flex-col overflow-hidden">
-        <!-- 画布和输出设置 -->
-        <SettingsPanel
-          :canvas="config.canvas"
-          :output="config.output"
-          @update:canvas="config.canvas = $event"
-          @update:output="config.output = $event"
-        />
-
-        <!-- 字段设置 -->
-        <div class="flex-1 flex flex-col overflow-hidden border-t">
-          <div class="p-4 border-b">
-            <h2 class="font-semibold text-sm">字段设置</h2>
+      <!-- 右侧 - 字段设置 -->
+      <Transition
+        enter-active-class="transition-all duration-500 ease-spring"
+        enter-from-class="opacity-0 translate-x-10"
+        enter-to-class="opacity-100 translate-x-0"
+        leave-active-class="transition-all duration-300 ease-in-out"
+        leave-from-class="opacity-100 translate-x-0"
+        leave-to-class="opacity-0 translate-x-10"
+      >
+        <aside 
+          v-if="selectedField"
+          class="absolute right-4 top-4 bottom-4 w-80 flex flex-col bg-background/85 backdrop-blur-xl rounded-xl shadow-lg border overflow-hidden z-20"
+        >
+          <div class="flex-1 flex flex-col h-full">
+            <!-- 字段设置 -->
+            <div class="flex-1 flex flex-col overflow-hidden border-t border-border/50">
+              <div class="p-4 border-b border-border/50 bg-muted/30">
+                <h2 class="font-semibold text-sm">{{ t('editor.title') }}</h2>
+              </div>
+              
+              <div class="flex-1 overflow-hidden">
+                <FieldEditor
+                  :field="selectedField"
+                  :fonts="fonts"
+                  @update="handleUpdateField"
+                />
+              </div>
+            </div>
           </div>
-          
-          <div v-if="selectedField" class="flex-1 overflow-hidden">
-            <FieldEditor
-              :field="selectedField"
-              :fonts="fonts"
-              @update="handleUpdateField"
-            />
-          </div>
-          <div v-else class="flex-1 flex items-center justify-center text-muted-foreground text-sm">
-            选择一个字段进行编辑
-          </div>
-        </div>
-      </aside>
+        </aside>
+      </Transition>
     </main>
 
     <!-- 隐藏的文件输入 -->
@@ -440,6 +485,23 @@ async function handleExport() {
       class="hidden"
       @change="handleExcelFileChange"
     >
+
+    <!-- 画布设置对话框 -->
+    <CanvasSettingsDialog
+      v-model:open="canvasSettingsOpen"
+      :canvas="config.canvas"
+      @update:canvas="config.canvas = $event"
+    />
+
+    <!-- 导出对话框 -->
+    <ExportDialog
+      v-model:open="exportDialogOpen"
+      :output="config.output"
+      :is-exporting="isExporting"
+      :progress="exportProgress"
+      @update:output="config.output = $event"
+      @export="handleExport"
+    />
   </div>
 </template>
 

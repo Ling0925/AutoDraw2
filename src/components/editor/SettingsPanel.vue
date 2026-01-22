@@ -1,8 +1,11 @@
 <script setup lang="ts">
+import { ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import type { CanvasConfig, OutputConfig } from '@/types'
 import { Input, Select, Label } from '@/components/ui'
 import { ChevronDown } from 'lucide-vue-next'
-import { ref } from 'vue'
+
+const { t } = useI18n()
 
 interface Props {
   canvas: CanvasConfig
@@ -35,7 +38,7 @@ function updateOutput(updates: Partial<OutputConfig>) {
         class="w-full p-4 flex items-center justify-between hover:bg-muted/50 transition-colors"
         @click="canvasOpen = !canvasOpen"
       >
-        <h2 class="font-semibold text-sm">画布设置</h2>
+        <h2 class="font-semibold text-sm">{{ t('settings.cardSettings') }}</h2>
         <ChevronDown
           :class="['w-4 h-4 transition-transform', canvasOpen ? 'rotate-180' : '']"
         />
@@ -44,7 +47,7 @@ function updateOutput(updates: Partial<OutputConfig>) {
       <div v-show="canvasOpen" class="px-4 pb-4 space-y-3">
         <div class="grid grid-cols-2 gap-2">
           <div>
-            <Label>宽度 (px)</Label>
+            <Label>{{ t('settings.width') }}</Label>
             <Input
               type="number"
               :model-value="String(canvas.width)"
@@ -52,7 +55,7 @@ function updateOutput(updates: Partial<OutputConfig>) {
             />
           </div>
           <div>
-            <Label>高度 (px)</Label>
+            <Label>{{ t('settings.height') }}</Label>
             <Input
               type="number"
               :model-value="String(canvas.height)"
@@ -62,7 +65,7 @@ function updateOutput(updates: Partial<OutputConfig>) {
         </div>
         
         <div>
-          <Label>背景颜色</Label>
+          <Label>{{ t('settings.backgroundColor') }}</Label>
           <div class="flex items-center gap-2">
             <input
               type="color"
@@ -79,10 +82,10 @@ function updateOutput(updates: Partial<OutputConfig>) {
         </div>
         
         <div>
-          <Label>背景图片</Label>
+          <Label>{{ t('settings.backgroundImage') }}</Label>
           <Input
             :model-value="canvas.backgroundImage || ''"
-            placeholder="路径（可选）"
+            :placeholder="t('settings.noImage')"
             @update:model-value="updateCanvas({ backgroundImage: $event || undefined })"
           />
         </div>
@@ -106,11 +109,12 @@ function updateOutput(updates: Partial<OutputConfig>) {
           <Label>文件格式</Label>
           <Select
             :model-value="output.format"
+            :options="[
+              { label: 'PNG', value: 'PNG' },
+              { label: 'JPEG', value: 'JPEG' }
+            ]"
             @update:model-value="updateOutput({ format: $event as 'PNG' | 'JPEG' })"
-          >
-            <option value="PNG">PNG</option>
-            <option value="JPEG">JPEG</option>
-          </Select>
+          />
         </div>
         
         <div>

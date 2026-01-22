@@ -1,0 +1,8 @@
+# 字体文件目录
+
+将字体文件（.ttf, .woff, .woff2等）放在这个目录中。
+
+例如：
+- SourceHanSansCN-Regular.ttf
+- SourceHanSansCN-Bold.ttf
+- Roboto-Regular.ttf

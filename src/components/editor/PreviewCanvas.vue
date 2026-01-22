@@ -1,7 +1,11 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, onUnmounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import type { CardConfig, ExcelRecord, Field } from '@/types'
 import { renderCardDoubleBuffered, calculateAllFieldBounds, findFieldAtPosition, type FieldBounds } from '@/utils'
+import { Select } from '@/components/ui'
+
+const { t } = useI18n()
 
 interface Props {
   config: CardConfig
@@ -22,8 +26,8 @@ const fieldBounds = ref<FieldBounds[]>([])
 
 // 网格设置
 const showGrid = ref(true)
-const gridSize = ref(20) // 网格大小
-const snapToGrid = ref(true) // 是否启用吸附
+const gridSize = ref(20)
+const snapToGrid = ref(true)
 
 // 拖拽状态
 const isDragging = ref(false)
@@ -314,58 +318,62 @@ onUnmounted(() => {
   }
 })
 
-// 暴露刷新方法
+// 暴露刷新方法w
 defineExpose({ updatePreview })
 </script>
-
 <template>
-  <div class="preview-container flex-1 flex flex-col overflow-hidden">
-    <!-- 网格控制工具栏 -->
-    <div class="flex items-center gap-2 px-4 py-2 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <label class="flex items-center gap-2 text-sm cursor-pointer">
+  <div class="preview-container h-full flex flex-col overflow-hidden relative">
+    <!-- 网格控制工具栏 - 悬浮胶囊样式 -->
+    <div class="relative mt-4 mb-2 mx-auto w-fit flex items-center gap-4 px-4 py-2 bg-background/90 backdrop-blur-sm rounded-full shadow-sm border z-10 transition-all hover:bg-accent/50 hover:shadow-md">
+      <label class="flex items-center gap-2 text-sm cursor-pointer hover:text-primary transition-colors text-muted-foreground">
         <input 
           v-model="showGrid" 
           type="checkbox" 
-          class="rounded border-input"
+          class="w-4 h-4 rounded border-input text-primary focus:ring-offset-0 focus:ring-1 focus:ring-primary/50 transition-all cursor-pointer"
           @change="updatePreview"
         >
-        <span>显示网格</span>
+        <span>{{ t('settings.showGrid') }}</span>
       </label>
       
-      <label class="flex items-center gap-2 text-sm cursor-pointer">
+      <div class="w-px h-4 bg-border"></div>
+
+      <label class="flex items-center gap-2 text-sm cursor-pointer hover:text-primary transition-colors text-muted-foreground" :class="{ 'opacity-50 cursor-not-allowed': !showGrid }">
         <input 
           v-model="snapToGrid" 
           type="checkbox" 
-          class="rounded border-input"
+          class="w-4 h-4 rounded border-input text-primary focus:ring-offset-0 focus:ring-1 focus:ring-primary/50 transition-all cursor-pointer"
           :disabled="!showGrid"
         >
-        <span>网格吸附</span>
+        <span>{{ t('preview.snapToGrid') || '网格吸附' }}</span>
       </label>
       
-      <div class="flex items-center gap-2 text-sm">
-        <span class="text-muted-foreground">网格大小:</span>
-        <select 
-          v-model.number="gridSize" 
-          class="px-2 py-1 text-xs border rounded"
-          @change="updatePreview"
-        >
-          <option :value="5">5px</option>
-          <option :value="10">10px</option>
-          <option :value="20">20px</option>
-          <option :value="25">25px</option>
-          <option :value="50">50px</option>
-        </select>
+      <div class="w-px h-4 bg-border"></div>
+
+      <div class="flex items-center gap-2 text-sm text-muted-foreground">
+        <span class="text-muted-foreground/80">{{ t('settings.gridSize') }}</span>
+        <Select 
+          :model-value="gridSize"
+          :options="[
+            { label: '5px', value: 5 },
+            { label: '10px', value: 10 },
+            { label: '20px', value: 20 },
+            { label: '25px', value: 25 },
+            { label: '50px', value: 50 },
+          ]"
+          class="h-7 w-20 px-2 py-1"
+          @update:model-value="newVal => { gridSize = Number(newVal); updatePreview() }"
+        />
       </div>
     </div>
     
     <!-- Canvas 预览区 -->
-    <div class="flex-1 flex items-center justify-center p-8 overflow-auto">
-      <div class="shadow-2xl">
+    <div class="flex-1 flex items-center justify-center p-8 overflow-auto bg-muted/20">
+      <div class="relative shadow-2xl transition-all duration-500 hover:shadow-[0_20px_50px_-12px_rgba(0,0,0,0.25)] hover:scale-[1.002]">
         <canvas
           ref="canvasRef"
           :width="config.canvas.width"
           :height="config.canvas.height"
-          class="max-w-full max-h-full select-none"
+          class="max-w-full max-h-full select-none relative z-0"
           :style="{
             maxWidth: '100%',
             height: 'auto',
@@ -376,6 +384,15 @@ defineExpose({ updatePreview })
           @mouseup="handleMouseUp"
           @mouseleave="handleMouseLeave"
         />
+        
+        <!-- 纸质纹理遮罩 -->
+        <div 
+          class="absolute inset-0 pointer-events-none z-10 mix-blend-multiply opacity-40"
+          style="background-image: url(&quot;data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.15'/%3E%3C/svg%3E&quot;);"
+        ></div>
+        
+        <!-- 细微光泽效果 -->
+        <div class="absolute inset-0 pointer-events-none z-10 bg-gradient-to-br from-white/20 to-transparent opacity-50 mix-blend-soft-light" style="pointer-events: none;"></div>
       </div>
     </div>
   </div>

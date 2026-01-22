@@ -324,32 +324,25 @@ export async function renderCard(
     } else if (field.type === 'image') {
       await drawImageField(ctx, field, record, index, uploadedImages)
     }
+  }
+  
+  // 绘制选中框（在所有字段绘制完成后，使用准确的边界框）
+  if (highlightFieldIndex !== undefined && highlightFieldIndex >= 0) {
+    const bounds = calculateAllFieldBounds(canvas, config, record, index, uploadedImages)
+    const selectedBounds = bounds.find(b => b.index === highlightFieldIndex)
     
-    // 高亮选中的字段
-    if (highlightFieldIndex === i && field) {
+    if (selectedBounds) {
       ctx.strokeStyle = '#3b82f6'
       ctx.lineWidth = 2
       ctx.setLineDash([5, 3])
       
-      // 简单的边框（实际应根据字段内容计算）
       const padding = 5
-      if (field.type === 'text') {
-        const tf = field as TextField
-        ctx.strokeRect(
-          tf.position.x - padding,
-          tf.position.y - tf.fontSize - padding,
-          200,
-          tf.fontSize + padding * 2
-        )
-      } else {
-        const imgf = field as ImageField
-        ctx.strokeRect(
-          imgf.position.x - padding,
-          imgf.position.y - padding,
-          (imgf.maxWidth || 100) + padding * 2,
-          (imgf.maxHeight || 100) + padding * 2
-        )
-      }
+      ctx.strokeRect(
+        selectedBounds.x - padding,
+        selectedBounds.y - padding,
+        selectedBounds.width + padding * 2,
+        selectedBounds.height + padding * 2
+      )
       
       ctx.setLineDash([])
     }
@@ -416,31 +409,25 @@ export async function renderCardDoubleBuffered(
     } else if (field.type === 'image') {
       await drawImageField(ctx, field, record, index, uploadedImages)
     }
+  }
+  
+  // 绘制选中框（在所有字段绘制完成后，使用准确的边界框）
+  if (highlightFieldIndex !== undefined && highlightFieldIndex >= 0) {
+    const bounds = calculateAllFieldBounds(offscreenCanvas, config, record, index, uploadedImages)
+    const selectedBounds = bounds.find(b => b.index === highlightFieldIndex)
     
-    // 高亮选中的字段
-    if (highlightFieldIndex === i && field) {
+    if (selectedBounds) {
       ctx.strokeStyle = '#3b82f6'
       ctx.lineWidth = 2
       ctx.setLineDash([5, 3])
       
       const padding = 5
-      if (field.type === 'text') {
-        const tf = field as TextField
-        ctx.strokeRect(
-          tf.position.x - padding,
-          tf.position.y - tf.fontSize - padding,
-          200,
-          tf.fontSize + padding * 2
-        )
-      } else {
-        const imgf = field as ImageField
-        ctx.strokeRect(
-          imgf.position.x - padding,
-          imgf.position.y - padding,
-          (imgf.maxWidth || 100) + padding * 2,
-          (imgf.maxHeight || 100) + padding * 2
-        )
-      }
+      ctx.strokeRect(
+        selectedBounds.x - padding,
+        selectedBounds.y - padding,
+        selectedBounds.width + padding * 2,
+        selectedBounds.height + padding * 2
+      )
       
       ctx.setLineDash([])
     }
